@@ -1,0 +1,3 @@
+{
+    "db": "mysql://root:cognitiva@localhost:3307/imagini"
+}

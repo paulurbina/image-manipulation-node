@@ -5,15 +5,18 @@ const express = require("express");
 const sharp   = require("sharp");
 const app     = express();
 
-/**
+const db = require('./config')
+
+    /**
  * imports controllers
  */
 const { uploadImage, donwloadImage } = require('./controllers/image.controller')
+const { stats } = require('./controllers/stats.controller')
 
-app.post('/uploads/:image', bodyParser.raw({
-    limit: '10mb',
-    type: 'image/*'
-}), uploadImage )
+app.post("/uploads/:name", bodyParser.raw({
+    limit : "10mb",
+    type : "image/*"
+}), uploadImage);
 
 
 app.param('width', (req, res, next, width) => {
@@ -36,49 +39,43 @@ app.param("greyscale", (req, res, next, greyscale) => {
     return next();
 });
 
-
-//  app.get("/uploads/:width(\\d+)x:height(\\d+)-:greyscale-:image", download_image);
-//  app.get("/uploads/:width(\\d+)x:height(\\d+)-:image", download_image);
-//  app.get("/uploads/_x:height(\\d+)-:greyscale-:image", download_image);
-//  app.get("/uploads/_x:height(\\d+)-:image", download_image);
-//  app.get("/uploads/:width(\\d+)x_-:greyscale-:image", download_image);
-//  app.get("/uploads/:width(\\d+)x_-:image", download_image);
-//  app.get("/uploads/:greyscale-:image", download_image);
-//  app.get("/uploads/:image", download_image);
-
-
 app.head('/uploads/:image', (req, res) => {
-    fs.access(req.localpath, fs.constants.R_OK, (err) => {
-            res.status(err ? 404 : 200)
-            res.end()
-        }
-    )
+    res.status(200).end()
 })
 
 /**
  * Ruta de descarga 
  */
-app.get('/uploads/:image', donwloadImage
+app.get('/uploads/:image', donwloadImage)
 
-    // let fd = fs.createReadStream(req.localpath)
+/**
+ * Eliminar una imagen
+ */
+app.delete('/uploads/:image', (req, res) => {
+    db.query("DELETE FROM images WHERE id = ?", [ req.image.id ], (err) => {
+        return res.status(err ? 500 : 200).end()
+    })
+})
 
-    // fd.on('error', (e) => {
-    //     res.status(e.code === 'ENOENT' ? 404 : 500).end()
-    // })
-    // res.setHeader('Content-Type', 'image/' + path.extname(req.image).substr(1))
-
-    // fd.pipe(res)
-)
+/**
+ * rutas de estadisticas
+ */
+app.get('/stats', stats)
 
 app.param('image', (req, res, next, image) => {
     if (!image.match(/\.(png|jpg)$/i)) {
-        return res.status(req.method == "POST" ? 403 : 404).end();
+        return res.status(403).end();
     }
 
-    req.image     = image
-    req.localpath = path.join(__dirname, 'uploads', req.image)
+    db.query("SELECT * FROM images WHERE name = ?", [ image ], (err, images) => {
+        if (err || !images.length) {
+            return res.status(404).end();
+        }
 
-    return next()
+        req.image = images[0];
+
+        return next();
+    });
 })
 
 
@@ -129,48 +126,17 @@ app.get(/\/thumbnail\.(jpg|png)/, (req, res, next) => {
 </svg>`
     );
 
-    image.composite([{
+image.composite([{
         input: thumbnail
     }])[format]().pipe(res);
 });
 
+setInterval(() => {
+    db.query("DELETE FROM images " +
+             "WHERE (date_created < UTC_TIMETSTAMP - INTERVAL 1 WEEK AND date_used IS NULL) " +
+             " OR (date_used < UTC_TIMETSTAMP - INTERVAL 1 MONTH)");
+}, 3600 * 1000);
+
 app.listen(3000, () => {
     console.log("ready");
 });
-
-/**
- * funcion podra manejar el cambio de tamaño opcional
- */
-
-// function download_image(req, res) {
-//     fs.access(req.localpath, fs.constants.R_OK, (err) => {
-//         if (err) return res.status(404).end()
-
-//         let image = sharp(req.localpath)
-//         let width = +req.query.width
-//         let height = +req.query.height
-//         let greyscale = (req.query.greyscale == 'yes')
-
-//         if(width > 0 && height > 0) {
-//             image.resize({ fit: 'fill' })
-//         }
-
-//         if(width > 0 || height > 0) {
-//             image.resize(width || null, height || null)
-//         }
-
-//         if(greyscale) {
-//             image.greyscale()
-//         }
-
-//         res.setHeader('Content-Type', 'image/' + path.extname(req.image).substr(1))
-
-//         image.pipe(res)
-//     })
-// }
-
-/**
-* Fin de la funcion podra manejar el cambio de tamaño opcional
-*/
-
-
